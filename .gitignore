@@ -61,6 +61,7 @@ dist/
 build/
 /build
 generated_images/
+uploads/
 
 # =========================================
 # 🔹 JAVASCRIPT / FRONTEND RULES (Any Folder)
