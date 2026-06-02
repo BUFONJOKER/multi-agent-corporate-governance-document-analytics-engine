@@ -1,0 +1,24 @@
+from rag.file_parsers.pdf_docx_xlsx.parser import parser as pdf_docx_xlsx_parser
+from rag.file_parsers.csv.csv_parser import csv_parser
+
+
+def parse_file(file_path: str, file_type: str):
+    if file_type in ["pdf", "docx", "xlsx"]:
+        return pdf_docx_xlsx_parser(file_path, file_type)
+    elif file_type == "csv":
+        return csv_parser(file_path)
+    else:
+        raise ValueError(f"Unsupported file type: {file_type}")
+
+
+if __name__ == "__main__":
+    # Example usage
+    file_type = input("Enter the file type (pdf, docx, xlsx, csv):")
+    file_path = input("Enter the file path:")
+
+    try:
+        result = parse_file(file_path, file_type)
+        print("Parsed Data:", result)
+
+    except ValueError as e:
+        print("Error:", str(e))
