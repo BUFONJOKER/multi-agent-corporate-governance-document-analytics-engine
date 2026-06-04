@@ -3,6 +3,8 @@ from rag.file_parsers.csv.csv_parser import csv_parser
 
 
 def parse_file(file_path: str, file_type: str):
+    '''Parses a file based on its type.'''
+
     if file_type in ["pdf", "docx", "xlsx"]:
         return pdf_docx_xlsx_parser(file_path, file_type)
     elif file_type == "csv":
