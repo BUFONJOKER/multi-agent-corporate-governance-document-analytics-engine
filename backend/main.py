@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api.routers.file_upload.handle_file_upload import upload_file_router
+from api.routers.file_upload.main import upload_file_router
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import uvicorn
