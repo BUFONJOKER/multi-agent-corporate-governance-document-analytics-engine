@@ -1,10 +1,24 @@
-from langchain_openai import OpenAIEmbeddings
 from langchain_classic.embeddings import CacheBackedEmbeddings
 from langchain_classic.storage import LocalFileStore
 import hashlib
 import os
 from pathlib import Path
 # from langsmith import traceable
+from rag.embedding_model.main import load_model
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    RateLimitError,
+)
+
+
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 1024
@@ -30,21 +44,38 @@ def sha256_encoder_with_namespace(text: str) -> str:
     combined_input = f"{NAMESPACE}{text}"
     return hashlib.sha256(combined_input.encode("utf-8")).hexdigest()
 
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(
+        multiplier=1,
+        min=2,
+        max=30,
+    ),
+    retry=retry_if_exception_type(
+        (
+            APIConnectionError,
+            APITimeoutError,
+            RateLimitError,
+        )
+    ),
+    reraise=True,
+)
+def warmup_embeddings(
+    cached_embedder,
+    text_to_embed,
+):
+    return cached_embedder.embed_documents(text_to_embed)
 
-# @traceable
 def generate_embeddings_for_chunks(chunks: list):
-    """Generates cache-backed embeddings matching your 1024-dimension Pinecone Index and returns the embedder instance for use in LangChain's vector store."""
 
-    text_to_embed = [chunk.page_content for chunk in chunks]
+    text_to_embed = [
+        chunk.page_content
+        for chunk in chunks
+    ]
 
-    # Keep dimensions explicit so they always match Pinecone index configuration.
-    underlying_embeddings = OpenAIEmbeddings(
-        model=EMBEDDING_MODEL,
-        dimensions=EMBEDDING_DIMENSIONS,
-    )
+    underlying_embeddings = load_model()
 
     store = LocalFileStore(str(CACHE_PATH))
-
 
     cached_embedder = CacheBackedEmbeddings.from_bytes_store(
         underlying_embeddings=underlying_embeddings,
@@ -52,8 +83,9 @@ def generate_embeddings_for_chunks(chunks: list):
         key_encoder=sha256_encoder_with_namespace,
     )
 
-    # Triggering the actual embedding matrix calculation for caching purposes
-    embeddings = cached_embedder.embed_documents(text_to_embed)
+    warmup_embeddings(
+        cached_embedder,
+        text_to_embed,
+    )
 
-    # Return the cached_embedder instance so LangChain's vector store can use its methods
     return cached_embedder
