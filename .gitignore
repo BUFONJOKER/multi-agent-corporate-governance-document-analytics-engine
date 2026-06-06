@@ -40,7 +40,9 @@ env/
 venv/
 ENV/
 .python-version
-
+.ipynb_checkpoints/
+# also include .ipynb files if you want to ignore Jupyter notebooks
+*.ipynb
 # Python Compiled Files (Global)
 *.py[cod]
 *$py.class
@@ -62,7 +64,7 @@ build/
 /build
 generated_images/
 uploads/
-
+rag_embedding_cache/
 # =========================================
 # 🔹 JAVASCRIPT / FRONTEND RULES (Any Folder)
 # =========================================

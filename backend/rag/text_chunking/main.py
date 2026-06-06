@@ -1,7 +1,9 @@
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 # Char-level splits
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langsmith import traceable
 
+# @traceable
 def text_chunking(markdown_document: str):
     '''Markdown splitting followed by token-level splitting with chunk size of 512 tokens'''
 

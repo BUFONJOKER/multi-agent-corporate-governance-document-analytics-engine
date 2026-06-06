@@ -11,9 +11,13 @@ load_dotenv(dotenv_path=env_path)
 # API Keys
 FIRE_CRAWL_API = os.getenv("FIRE_CRAWL_API")
 CLOUDMERSIVE_VIRUS_API = os.getenv("CLOUDMERSIVE_VIRUS_API")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 # Validate required API keys
 if not FIRE_CRAWL_API:
     raise ValueError("FIRE_CRAWL_API is not set in .env file")
 
 if not CLOUDMERSIVE_VIRUS_API:
     raise ValueError("CLOUDMERSIVE_VIRUS_API is not set in .env file")
+
+if not PINECONE_API_KEY:
+    raise ValueError("PINECONE_API_KEY is not set in .env file")
