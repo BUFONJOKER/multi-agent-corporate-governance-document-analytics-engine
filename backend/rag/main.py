@@ -1,70 +1,72 @@
+from typing import Union, List
+from collections import defaultdict
+
 from rag.file_parsers.main import parse_file
 from rag.text_chunking.main import text_chunking
 from rag.vector_store.main import generate_and_store_embeddings
-from rag.hybrid_search.main import (
-    query_index,
-    format_retrieved_context,
-    retrieve_with_sources,
-)
+from rag.detect_file_type.main import detect_file_type
 
 INDEX_NAME = "multi-agent-corporate-index"
 
-
 def ingest_document(
-    file_path: str,
-    file_type: str,
+    file_path: Union[str, List[str]],
 ) -> dict:
     """
-    Parse, chunk, embed, and store a document in Pinecone.
-
-    Args:
-        file_path (str):
-            Path to the uploaded file.
-
-        file_type (str):
-            Supported file type (pdf, csv, xlsx, docx, etc.).
-
-    Returns:
-        dict:
-            Pinecone ingestion summary.
+    Ingest single or multiple files into RAG system.
+    File type is auto-detected.
     """
 
-    # -------------------------------------------------------------
-    # Parse
-    # -------------------------------------------------------------
+    # ----------------------------
+    # Normalize input
+    # ----------------------------
 
-    documents = parse_file(
-        file_path=file_path,
-        file_type=file_type,
-    )
+    if isinstance(file_path, str):
+        file_path = [file_path]
 
-    if not documents:
-        raise ValueError(
-            "No documents were produced by parser."
+    # ----------------------------
+    # Group by file type
+    # ----------------------------
+
+    grouped = defaultdict(list)
+
+    for fp in file_path:
+        ft = detect_file_type(fp)
+        grouped[ft].append(fp)
+
+    # ----------------------------
+    # Parse all files
+    # ----------------------------
+
+    all_docs = []
+
+    for file_type, files in grouped.items():
+
+        docs = parse_file(
+            file_path=files,
+            file_type=file_type,
         )
 
-    # -------------------------------------------------------------
-    # Chunk
-    # -------------------------------------------------------------
+        if not docs:
+            raise ValueError(
+                f"No documents parsed for {file_type}"
+            )
 
-    chunks = text_chunking(
-        documents=documents
-    )
+        all_docs.extend(docs)
+
+    # ----------------------------
+    # Chunk
+    # ----------------------------
+
+    chunks = text_chunking(all_docs)
 
     if not chunks:
-        raise ValueError(
-            "No chunks were produced."
-        )
+        raise ValueError("No chunks created")
 
-    # -------------------------------------------------------------
-    # Store
-    # -------------------------------------------------------------
+    # ----------------------------
+    # Embed + Store
+    # ----------------------------
 
-    result = generate_and_store_embeddings(
-        chunks=chunks
-    )
-
-    return result
+    return generate_and_store_embeddings(chunks)
 
 
 def retrieve_documents(
