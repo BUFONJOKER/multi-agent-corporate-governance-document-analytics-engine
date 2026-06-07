@@ -2,7 +2,6 @@ from pinecone import Pinecone
 from rag.embedding.main import get_dense_embedder
 from config import PINECONE_API_KEY
 
-
 def query_index(query_text: str, index_name: str, bm25_encoder):
     pc = Pinecone(api_key=PINECONE_API_KEY)
     index = pc.Index(index_name)
