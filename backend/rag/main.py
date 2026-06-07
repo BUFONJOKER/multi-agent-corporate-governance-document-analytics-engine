@@ -1,6 +1,6 @@
 from rag.file_parsers.main import parse_file
 from rag.text_chunking.main import text_chunking
-from rag.vector_store.main import store_embeddings
+from rag.vector_store.main import generate_and_store_embeddings
 from rag.hybrid_search.main import query_index
 
 def rag_pipeline(file_path: str, file_type: str, query_text: str):
@@ -11,7 +11,7 @@ def rag_pipeline(file_path: str, file_type: str, query_text: str):
     chunks = text_chunking(markdown_content)
 
     # Step 3: Store embeddings in vector store
-    stored  = store_embeddings(chunks)
+    stored  = generate_and_store_embeddings(chunks)
 
     index_name = stored["index_name"]
     bm25_encoder = stored["bm25_encoder"]

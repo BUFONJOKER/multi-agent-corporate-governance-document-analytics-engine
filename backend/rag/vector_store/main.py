@@ -35,7 +35,7 @@ INDEX_NAME = "multi-agent-corporate-index"
 # -----------------------------------------------------------------------------
 
 
-def store_embeddings(chunks:list):
+def generate_and_store_embeddings(chunks:list):
     """
     Store document chunks in Pinecone using hybrid upsert.
 
