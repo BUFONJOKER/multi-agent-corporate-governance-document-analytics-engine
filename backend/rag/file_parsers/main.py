@@ -1,12 +1,12 @@
-from rag.file_parsers.pdf_docx_xlsx.parser import parser as pdf_docx_xlsx_parser
+from backend.rag.file_parsers.pdf.main import pdf_parser
 from rag.file_parsers.csv.csv_parser import csv_parser
 
 
 def parse_file(file_path: str, file_type: str):
     '''Parses a file based on its type.'''
 
-    if file_type in ["pdf", "docx", "xlsx"]:
-        return pdf_docx_xlsx_parser(file_path, file_type)
+    if file_type in 'pdf':
+        return pdf_parser(file_path, file_type)
     elif file_type == "csv":
         return csv_parser(file_path)
     else:
