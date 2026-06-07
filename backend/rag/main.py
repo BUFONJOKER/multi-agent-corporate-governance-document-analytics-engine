@@ -1,81 +1,200 @@
 from rag.file_parsers.main import parse_file
 from rag.text_chunking.main import text_chunking
 from rag.vector_store.main import generate_and_store_embeddings
-from rag.hybrid_search.main import query_index
+from rag.hybrid_search.main import (
+    query_index,
+    format_retrieved_context,
+    retrieve_with_sources,
+)
+
+INDEX_NAME = "multi-agent-corporate-index"
 
 
-def rag_pipeline(file_path: str, file_type: str, query_text: str):
+def ingest_document(
+    file_path: str,
+    file_type: str,
+) -> dict:
     """
-    Execute the complete Retrieval-Augmented Generation (RAG) pipeline.
-
-    This function orchestrates the end-to-end document processing workflow:
-    1. Parses the uploaded file into markdown/text format.
-    2. Splits the parsed content into smaller chunks suitable for retrieval.
-    3. Generates dense and sparse embeddings for each chunk and stores them
-       in the configured vector database.
-    4. Executes a hybrid search query against the vector store using the
-       provided query text.
-    5. Returns the retrieved search results.
+    Parse, chunk, embed, and store a document in Pinecone.
 
     Args:
         file_path (str):
-            Absolute or relative path to the input document that will be
-            processed by the RAG pipeline.
+            Path to the uploaded file.
 
         file_type (str):
-            Type of the input file. Examples include:
-            - "pdf"
-            - "csv"
-
-            The value determines which parser will be used to extract content.
-
-        query_text (str):
-            User query or search question used to retrieve the most relevant
-            document chunks from the vector store.
+            Supported file type (pdf, csv, xlsx, docx, etc.).
 
     Returns:
-        QueryResponse:
-            Pinecone query response containing the most relevant retrieved
-            document chunks, similarity scores, vector IDs, and metadata
-            associated with the matched records.
-
-    Raises:
-        FileNotFoundError:
-            If the specified file does not exist.
-
-        ValueError:
-            If the file type is unsupported or invalid input data is provided.
-
-        RuntimeError:
-            If parsing, chunking, embedding generation, vector storage,
-            or retrieval operations fail.
-
-    Example:
-        >>> results = rag_pipeline(
-        ...     file_path="data/annual_report.pdf",
-        ...     file_type="pdf",
-        ...     query_text="What are the company's revenue growth projections?"
-        ... )
-        >>> print(results)
+        dict:
+            Pinecone ingestion summary.
     """
 
-    # Step 1: Parse the file
-    markdown_content = parse_file(file_path, file_type)
+    # -------------------------------------------------------------
+    # Parse
+    # -------------------------------------------------------------
 
-    # Step 2: Chunk the text
-    chunks = text_chunking(markdown_content)
+    documents = parse_file(
+        file_path=file_path,
+        file_type=file_type,
+    )
 
-    # Step 3: Store embeddings in vector store
-    stored = generate_and_store_embeddings(chunks)
+    if not documents:
+        raise ValueError(
+            "No documents were produced by parser."
+        )
 
-    index_name = stored["index_name"]
-    bm25_encoder = stored["bm25_encoder"]
+    # -------------------------------------------------------------
+    # Chunk
+    # -------------------------------------------------------------
 
-    # Step 4: Query the index
+    chunks = text_chunking(
+        documents=documents
+    )
+
+    if not chunks:
+        raise ValueError(
+            "No chunks were produced."
+        )
+
+    # -------------------------------------------------------------
+    # Store
+    # -------------------------------------------------------------
+
+    result = generate_and_store_embeddings(
+        chunks=chunks
+    )
+
+    return result
+
+
+def retrieve_documents(
+    query_text: str,
+    top_k: int = 10,
+    filter_dict: dict | None = None,
+):
+    """
+    Retrieve relevant chunks from Pinecone.
+
+    Args:
+        query_text (str):
+            User query.
+
+        top_k (int):
+            Number of chunks to retrieve.
+
+        filter_dict (dict | None):
+            Optional Pinecone metadata filter.
+
+    Returns:
+        QueryResponse
+    """
+
+    return query_index(
+        query_text=query_text,
+        index_name=INDEX_NAME,
+        top_k=top_k,
+        filter_dict=filter_dict,
+    )
+
+
+def retrieve_context(
+    query_text: str,
+    top_k: int = 10,
+    filter_dict: dict | None = None,
+) -> str:
+    """
+    Retrieve and format context for LLM prompting.
+
+    Args:
+        query_text (str):
+            User query.
+
+        top_k (int):
+            Number of chunks.
+
+        filter_dict (dict | None):
+            Optional metadata filter.
+
+    Returns:
+        str
+    """
+
+    results = retrieve_documents(
+        query_text=query_text,
+        top_k=top_k,
+        filter_dict=filter_dict,
+    )
+
+    return format_retrieved_context(
+        results
+    )
+
+
+def retrieve_context_with_sources(
+    query_text: str,
+    top_k: int = 10,
+    filter_dict: dict | None = None,
+):
+    """
+    Retrieve context along with source metadata.
+
+    Args:
+        query_text (str):
+            User query.
+
+        top_k (int):
+            Number of chunks.
+
+        filter_dict (dict | None):
+            Optional metadata filter.
+
+    Returns:
+        list[dict]
+    """
+
+    return retrieve_with_sources(
+        query_text=query_text,
+        index_name=INDEX_NAME,
+        top_k=top_k,
+        filter_dict=filter_dict,
+    )
+
+
+def rag_pipeline(
+    file_path: str,
+    file_type: str,
+    query_text: str,
+):
+    """
+    End-to-end pipeline for testing.
+
+    WARNING:
+    This re-indexes the document every time it runs.
+    Prefer ingest_document() + retrieve_context()
+    in production.
+
+    Args:
+        file_path (str):
+            File to ingest.
+
+        file_type (str):
+            File type.
+
+        query_text (str):
+            User question.
+
+    Returns:
+        QueryResponse
+    """
+
+    ingestion_result = ingest_document(
+        file_path=file_path,
+        file_type=file_type,
+    )
+
     results = query_index(
-        query_text,
-        index_name=index_name,
-        bm25_encoder=bm25_encoder
+        query_text=query_text,
+        index_name=ingestion_result["index_name"],
     )
 
     return results

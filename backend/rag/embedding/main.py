@@ -1,10 +1,15 @@
-from langchain_classic.embeddings import CacheBackedEmbeddings
-from langchain_classic.storage import LocalFileStore
 import hashlib
 import os
 from pathlib import Path
-# from langsmith import traceable
-from rag.embedding_model.main import load_model
+from typing import List
+
+from langchain_core.documents import Document
+
+from langchain_classic.embeddings import CacheBackedEmbeddings
+from langchain_classic.storage import LocalFileStore
+
+from pinecone_text.sparse import BM25Encoder
+
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -17,32 +22,98 @@ from openai import (
     APITimeoutError,
     RateLimitError,
 )
-from pinecone_text.sparse import BM25Encoder
 
+from rag.embedding_model.main import load_model
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 1024
-NAMESPACE = f"{EMBEDDING_MODEL}:{EMBEDDING_DIMENSIONS}"
-# Establish project baseline directory anchor
+
+# Increment this when changing embedding model/chunking strategy
+EMBEDDING_VERSION = "v1"
+
+NAMESPACE = (
+    f"{EMBEDDING_MODEL}:"
+    f"{EMBEDDING_DIMENSIONS}:"
+    f"{EMBEDDING_VERSION}"
+)
+
+# =============================================================================
+# Cache Directories
+# =============================================================================
+
 BASE_DIR = Path(__file__).resolve().parent
 
-# Force paths to evaluate directly from an environment variable or absolute local fallback
 BACKEND_STORE_DIR = os.environ.get("BACKEND_STORE_DIR")
 
 if BACKEND_STORE_DIR:
-    CACHE_PATH = Path(BACKEND_STORE_DIR) / "rag_embedding_cache"
+    CACHE_PATH = (
+        Path(BACKEND_STORE_DIR)
+        / "rag_embedding_cache"
+    )
 else:
-    # Traverses upward safely to locate the designated 'backend' directory structure
-    # This ensures consistency during local terminal execution or multi-node worker tasks
-    CACHE_PATH = BASE_DIR.parent.parent / "rag_embedding_cache"
+    CACHE_PATH = (
+        BASE_DIR.parent.parent
+        / "rag_embedding_cache"
+    )
 
-# Create the folder structure automatically if it doesn't exist yet to prevent initialization errors
-CACHE_PATH.mkdir(parents=True, exist_ok=True)
+CACHE_PATH.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+BM25_PATH = CACHE_PATH / "bm25_values.json"
 
 
-def sha256_encoder_with_namespace(text: str) -> str:
-    combined_input = f"{NAMESPACE}{text}"
-    return hashlib.sha256(combined_input.encode("utf-8")).hexdigest()
+# =============================================================================
+# Cache Helpers
+# =============================================================================
+
+def sha256_encoder_with_namespace(
+    text: str,
+) -> str:
+    """
+    Generate a deterministic cache key.
+    """
+
+    combined_input = (
+        f"{NAMESPACE}{text}"
+    )
+
+    return hashlib.sha256(
+        combined_input.encode("utf-8")
+    ).hexdigest()
+
+
+# =============================================================================
+# Dense Embeddings
+# =============================================================================
+
+def get_dense_embedder():
+    """
+    Create cache-backed embedding model.
+    """
+
+    underlying_embeddings = load_model()
+
+    store = LocalFileStore(
+        str(CACHE_PATH)
+    )
+
+    cached_embedder = (
+        CacheBackedEmbeddings.from_bytes_store(
+            underlying_embeddings=underlying_embeddings,
+            document_embedding_cache=store,
+            key_encoder=sha256_encoder_with_namespace,
+        )
+    )
+
+    return cached_embedder
+
 
 @retry(
     stop=stop_after_attempt(5),
@@ -62,49 +133,130 @@ def sha256_encoder_with_namespace(text: str) -> str:
 )
 def warmup_embeddings(
     cached_embedder,
-    text_to_embed,
+    texts: List[str],
 ):
-    return cached_embedder.embed_documents(text_to_embed)
+    """
+    Generate embeddings with retries.
+    """
 
-def get_dense_embedder():
-    '''
-    Initializes and returns the cache-backed embedding model instance.
-    '''
-    underlying_embeddings = load_model()
-    store = LocalFileStore(str(CACHE_PATH))
-
-    cached_embedder = CacheBackedEmbeddings.from_bytes_store(
-        underlying_embeddings=underlying_embeddings,
-        document_embedding_cache=store,
-        key_encoder=sha256_encoder_with_namespace,
+    return cached_embedder.embed_documents(
+        texts
     )
-    return cached_embedder
 
 
-def generate_dense_embeddings(chunks: list):
-    '''
-    Generate dense embeddings for a list of text chunks.
-    '''
+def generate_dense_embeddings(
+    chunks: List[Document],
+):
+    """
+    Generate dense embeddings for document chunks.
+
+    Args:
+        chunks (List[Document]):
+            Chunked documents.
+
+    Returns:
+        List[List[float]]
+    """
+
     if not chunks:
         return []
 
-    text_to_embed = [chunk.page_content for chunk in chunks]
+    texts = [
+        chunk.page_content
+        for chunk in chunks
+        if chunk.page_content.strip()
+    ]
 
-    # Reuse the new initialization function
+    if not texts:
+        return []
+
     cached_embedder = get_dense_embedder()
 
-    dense_vectors = warmup_embeddings(cached_embedder, text_to_embed)
+    dense_vectors = warmup_embeddings(
+        cached_embedder,
+        texts,
+    )
+
     return dense_vectors
 
-def generate_sparse_bm25(chunks: list):
-    """Generates BM25 sparse vectors separately."""
-    text_to_embed = [chunk.page_content for chunk in chunks]
+
+# =============================================================================
+# BM25
+# =============================================================================
+
+def fit_bm25_encoder(
+    chunks: List[Document],
+):
+    """
+    Train and persist BM25 vocabulary.
+
+    Run this when building a fresh index.
+    """
+
+    if not chunks:
+        raise ValueError(
+            "Cannot fit BM25 on empty chunk list."
+        )
+
+    texts = [
+        chunk.page_content
+        for chunk in chunks
+        if chunk.page_content.strip()
+    ]
 
     bm25 = BM25Encoder()
-    bm25.fit(text_to_embed)
 
-    # Save parameters to use exactly the same vocabulary weightings during queries
-    # bm25.dump("bm25_values.json")
+    bm25.fit(texts)
 
-    sparse_vectors = bm25.encode_documents(text_to_embed)
-    return sparse_vectors, bm25
+    bm25.dump(
+        str(BM25_PATH)
+    )
+
+    return bm25
+
+
+def get_bm25_encoder():
+    """
+    Load existing BM25 encoder.
+    """
+
+    if not BM25_PATH.exists():
+        raise FileNotFoundError(
+            f"BM25 vocabulary not found: {BM25_PATH}\n"
+            f"Run fit_bm25_encoder() first."
+        )
+
+    return BM25Encoder().load(
+        str(BM25_PATH)
+    )
+
+
+def generate_sparse_bm25(
+    chunks: List[Document],
+):
+    """
+    Generate sparse vectors using persisted BM25 vocabulary.
+
+    Args:
+        chunks (List[Document])
+
+    Returns:
+        List[dict]
+    """
+
+    if not chunks:
+        return []
+
+    bm25 = get_bm25_encoder()
+
+    texts = [
+        chunk.page_content
+        for chunk in chunks
+        if chunk.page_content.strip()
+    ]
+
+    sparse_vectors = bm25.encode_documents(
+        texts
+    )
+
+    return sparse_vectors

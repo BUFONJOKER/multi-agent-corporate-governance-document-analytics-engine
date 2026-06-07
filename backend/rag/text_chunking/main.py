@@ -1,30 +1,53 @@
-from langchain_text_splitters import MarkdownHeaderTextSplitter
-# Char-level splits
+from typing import List
+
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langsmith import traceable
 
-# @traceable
-def text_chunking(markdown_document: str):
-    '''Markdown splitting followed by token-level splitting with chunk size of 512 tokens'''
 
-    headers_to_split_on = [
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-        ("###", "Header 3"),
-    ]
+def text_chunking(
+    documents: List[Document],
+    chunk_size: int = 512,
+    chunk_overlap: int = 30,
+) -> List[Document]:
+    """
+    Split LangChain documents into smaller chunks while preserving metadata.
 
-    # MD splits
-    markdown_splitter = MarkdownHeaderTextSplitter(
-        headers_to_split_on=headers_to_split_on, strip_headers=False
-    )
-    md_header_splits = markdown_splitter.split_text(markdown_document)
+    This function works with documents parsed from PDFs, CSVs, Excel files,
+    DOCX files, TXT files, and other supported formats.
 
-    chunk_size = 512
-    chunk_overlap = 30
+    Args:
+        documents (List[Document]):
+            List of LangChain Document objects.
+
+        chunk_size (int, optional):
+            Maximum size of each chunk. Defaults to 512.
+
+        chunk_overlap (int, optional):
+            Number of overlapping characters between chunks.
+            Defaults to 30.
+
+    Returns:
+        List[Document]:
+            Chunked documents with original metadata preserved and
+            additional chunk metadata added.
+    """
+
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=[
+            "\n\n",
+            "\n",
+            ". ",
+            " ",
+            "",
+        ],
     )
 
-    # Split
-    splits = text_splitter.split_documents(md_header_splits)
-    return splits
+    chunks = text_splitter.split_documents(documents)
+
+    for idx, chunk in enumerate(chunks):
+        chunk.metadata["chunk_id"] = idx
+        chunk.metadata["chunk_size"] = len(chunk.page_content)
+
+    return chunks

@@ -1,36 +1,26 @@
+import os
+from typing import List
+
+from langchain_core.documents import Document
 from langchain_community.document_loaders import CSVLoader
 
-def compile_docs_to_markdown(documents):
-    markdown_lines = []
 
-    # 1. Add a primary document title
-    markdown_lines.append("# Corporate Governance Analytics Engine - Task List\n")
-    markdown_lines.append("This file aggregates all parsed task records into a single markdown index.\n")
-    markdown_lines.append("--- \n")
 
-    # 2. Iterate through each document item
-    for doc in documents:
-        # Extract metadata for tracking
-        row_num = doc.metadata.get('row', 'Unknown')
+def csv_parser(file_path: str) -> List[Document]:
+    """
+    Parse a CSV file into LangChain Document objects.
 
-        # Format the page_content slightly to separate elements cleanly
-        # Replacing original newlines with Markdown list bullet structures
-        formatted_content = doc.page_content.replace("\n", "\n* ")
+    Each row in the CSV becomes a separate Document. Additional metadata
+    is added to support source attribution during retrieval.
 
-        # 3. Append as a distinct Markdown Section
-        markdown_lines.append(f"## Document Row #{row_num}")
-        markdown_lines.append(f"* {formatted_content}")
-        markdown_lines.append("\n---") # Separator between records
+    Args:
+        file_path (str):
+            Path to the CSV file.
 
-    # 4. Join everything with newlines
-    final_markdown = "\n".join(markdown_lines)
-
-    return final_markdown
-
-def csv_parser(file_path: str):
-    '''
-    Parse a CSV file and return a list of documents, where each document represents a single row transformed into key-value text strings.
-    '''
+    Returns:
+        List[Document]:
+            List of Document objects representing CSV rows.
+    """
 
     loader = CSVLoader(
         file_path=file_path,
@@ -39,8 +29,38 @@ def csv_parser(file_path: str):
             "quotechar": '"',
         }
     )
+
     docs = loader.load()
 
-    docs = compile_docs_to_markdown(docs)
-    # Each doc represents a single row transformed into key-value text strings
+    file_name = os.path.basename(file_path)
+
+    for doc in docs:
+        doc.metadata["file_name"] = file_name
+        doc.metadata["file_type"] = "csv"
+
     return docs
+
+
+
+
+
+def parse_multiple_csvs(file_paths: List[str]) -> List[Document]:
+    """
+    Parse multiple CSV files into a single document collection.
+
+    Args:
+        file_paths (List[str]):
+            List of CSV file paths.
+
+    Returns:
+        List[Document]:
+            Combined documents from all CSV files.
+    """
+
+    all_docs = []
+
+    for file_path in file_paths:
+        docs = csv_parser(file_path)
+        all_docs.extend(docs)
+
+    return all_docs
