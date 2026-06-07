@@ -5,7 +5,7 @@ from rag.file_parsers.main import parse_file
 from rag.text_chunking.main import text_chunking
 from rag.vector_store.main import generate_and_store_embeddings
 from rag.detect_file_type.main import detect_file_type
-
+from rag.hybrid_search.main import query_index, format_retrieved_context, retrieve_with_sources
 INDEX_NAME = "multi-agent-corporate-index"
 
 def ingest_document(
