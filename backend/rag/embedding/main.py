@@ -17,7 +17,7 @@ from openai import (
     APITimeoutError,
     RateLimitError,
 )
-
+from pinecone_text.sparse import BM25Encoder
 
 
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -66,15 +66,11 @@ def warmup_embeddings(
 ):
     return cached_embedder.embed_documents(text_to_embed)
 
-def generate_embeddings_for_chunks(chunks: list):
-
-    text_to_embed = [
-        chunk.page_content
-        for chunk in chunks
-    ]
-
+def get_dense_embedder():
+    '''
+    Initializes and returns the cache-backed embedding model instance.
+    '''
     underlying_embeddings = load_model()
-
     store = LocalFileStore(str(CACHE_PATH))
 
     cached_embedder = CacheBackedEmbeddings.from_bytes_store(
@@ -82,10 +78,33 @@ def generate_embeddings_for_chunks(chunks: list):
         document_embedding_cache=store,
         key_encoder=sha256_encoder_with_namespace,
     )
-
-    warmup_embeddings(
-        cached_embedder,
-        text_to_embed,
-    )
-
     return cached_embedder
+
+
+def generate_dense_embeddings(chunks: list):
+    '''
+    Generate dense embeddings for a list of text chunks.
+    '''
+    if not chunks:
+        return []
+
+    text_to_embed = [chunk.page_content for chunk in chunks]
+
+    # Reuse the new initialization function
+    cached_embedder = get_dense_embedder()
+
+    dense_vectors = warmup_embeddings(cached_embedder, text_to_embed)
+    return dense_vectors
+
+def generate_sparse_bm25(chunks: list):
+    """Generates BM25 sparse vectors separately."""
+    text_to_embed = [chunk.page_content for chunk in chunks]
+
+    bm25 = BM25Encoder()
+    bm25.fit(text_to_embed)
+
+    # Save parameters to use exactly the same vocabulary weightings during queries
+    # bm25.dump("bm25_values.json")
+
+    sparse_vectors = bm25.encode_documents(text_to_embed)
+    return sparse_vectors, bm25
