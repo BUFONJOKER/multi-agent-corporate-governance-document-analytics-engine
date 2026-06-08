@@ -1,32 +1,26 @@
-from langchain_openai import OpenAIEmbeddings
-from dotenv import load_dotenv
+from typing import List, Union
 
-load_dotenv()
-
+# Keep a global hidden tracker set to None
+_cached_embeddings = None
 
 def load_model():
     """
     Load the OpenAI embedding model used throughout the RAG pipeline.
-
-    We use the `text-embedding-3-small` model because it provides an excellent
-    balance of quality, speed, and cost for retrieval-augmented generation (RAG)
-    applications.
-
-    Key characteristics:
-    - Cost-effective compared to larger embedding models.
-    - Suitable for semantic search, document retrieval, clustering,
-      classification, and similarity matching tasks.
-    - Supports configurable output dimensions.
-    - Configured here to generate 1024-dimensional embeddings to match the
-      Pinecone index configuration used by this application.
-    - Delivers strong retrieval performance while helping reduce storage and
-      vector database costs compared to higher-dimensional embeddings.
-
-    Returns:
-        OpenAIEmbeddings: Configured embedding model instance.
+    Uses a lazy-loading singleton pattern to keep imports instant.
     """
+    global _cached_embeddings
 
-    return OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        dimensions=1024,
-    )
+    if _cached_embeddings is None:
+        # Inline imports and initializations happen ONLY when load_model() is called
+        from langchain_openai import OpenAIEmbeddings
+        from dotenv import load_dotenv
+
+        load_dotenv()
+
+        print("[*] Instantiating OpenAIEmbeddings client for the first time...")
+        _cached_embeddings = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            dimensions=1024,
+        )
+
+    return _cached_embeddings

@@ -163,7 +163,7 @@ def retrieve_context_with_sources(
 
 
 def rag_pipeline(
-    file_path: str,
+    file_path: Union[str, List[str]],
     file_type: str,
     query_text: str,
 ):
@@ -176,8 +176,8 @@ def rag_pipeline(
     in production.
 
     Args:
-        file_path (str):
-            File to ingest.
+        file_path (Union[str, List[str]]):
+            File or files to ingest.
 
         file_type (str):
             File type.

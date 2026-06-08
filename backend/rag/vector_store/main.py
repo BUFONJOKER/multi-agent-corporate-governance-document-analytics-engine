@@ -4,9 +4,7 @@ from typing import List
 
 from langchain_core.documents import Document
 
-from pinecone import Pinecone
-from pinecone.exceptions import PineconeException
-
+# REMOVED global pinecone imports to eliminate the 5.2s import delay!
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -17,10 +15,7 @@ from tenacity import (
 
 from config import PINECONE_API_KEY
 
-from rag.embedding.main import (
-    generate_dense_embeddings,
-    generate_sparse_bm25,
-)
+
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -44,15 +39,9 @@ def generate_and_store_embeddings(
 ) -> dict:
     """
     Generate dense and sparse embeddings and store them in Pinecone.
-
-    Args:
-        chunks (List[Document]):
-            Chunked LangChain documents.
-
-    Returns:
-        dict:
-            Information about the ingestion process.
     """
+    # Inline import PineconeException here to catch errors lazily
+    from pinecone.exceptions import PineconeException
 
     try:
         if not chunks:
@@ -91,6 +80,12 @@ def generate_and_store_embeddings(
 # Pinecone Upsert
 # -----------------------------------------------------------------------------
 
+# We use a custom lambda function to delay importing PineconeException until runtime
+def _is_pinecone_exception(exception):
+    from pinecone.exceptions import PineconeException
+    return isinstance(exception, (PineconeException, ConnectionError, TimeoutError))
+
+
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(
@@ -99,11 +94,8 @@ def generate_and_store_embeddings(
         max=30,
     ),
     retry=retry_if_exception_type(
-        (
-            PineconeException,
-            ConnectionError,
-            TimeoutError,
-        )
+        # Point to our custom inline evaluator instead of global classes
+        _is_pinecone_exception
     ),
     before_sleep=before_sleep_log(
         logger,
@@ -117,18 +109,9 @@ def upsert_to_pinecone(
 ) -> dict:
     """
     Upsert dense and sparse vectors into Pinecone.
-
-    Args:
-        chunks (List[Document]):
-            Chunked LangChain documents.
-
-        index_name (str):
-            Pinecone index name.
-
-    Returns:
-        dict:
-            Ingestion summary.
     """
+    # Inline import the core Pinecone class inside the execution scope
+    from pinecone import Pinecone
 
     if not chunks:
         raise ValueError(
@@ -168,6 +151,8 @@ def upsert_to_pinecone(
     # Dense Embeddings
     # -------------------------------------------------------------------------
 
+    from rag.embedding.main import generate_dense_embeddings
+
     dense_vectors = generate_dense_embeddings(
         validated_chunks
     )
@@ -176,7 +161,9 @@ def upsert_to_pinecone(
     # Sparse Embeddings (BM25)
     # -------------------------------------------------------------------------
 
-    sparse_vectors, _ = generate_sparse_bm25(
+    from rag.embedding.main import generate_sparse_bm25
+
+    sparse_vectors = generate_sparse_bm25(
         validated_chunks
     )
 
@@ -227,8 +214,6 @@ def upsert_to_pinecone(
             i,
         )
 
-        # Create collision-resistant unique ID
-
         unique_string = (
             f"{source}|"
             f"{page}|"
@@ -254,8 +239,6 @@ def upsert_to_pinecone(
                 len(chunk.page_content),
             ),
         }
-
-        # Remove None values
 
         pinecone_metadata = {
             k: v

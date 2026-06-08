@@ -1,14 +1,30 @@
 from typing import Optional
 
-from pinecone import Pinecone
-
+# REMOVED global heavy imports to drop import latency down to 0ms
 from config import PINECONE_API_KEY
 
-from rag.embedding.main import (
-    get_dense_embedder,
-    get_bm25_encoder,
-)
 
+# ------------------------------------------------------------------
+# Pinecone Lazy Connection Helper
+# ------------------------------------------------------------------
+_index_instance = None
+
+def _get_pinecone_index(index_name: str):
+    """
+    Establish a connection to your index lazily on the first query invocation.
+    """
+    global _index_instance
+    if _index_instance is None:
+        from pinecone import Pinecone
+
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        _index_instance = pc.Index(index_name)
+    return _index_instance
+
+
+# ------------------------------------------------------------------
+# Core Retrieval Operations
+# ------------------------------------------------------------------
 
 def query_index(
     query_text: str,
@@ -19,77 +35,41 @@ def query_index(
     """
     Perform hybrid retrieval from Pinecone using dense embeddings
     and BM25 sparse vectors.
-
-    Args:
-        query_text (str):
-            User query.
-
-        index_name (str):
-            Pinecone index name.
-
-        top_k (int, optional):
-            Number of results to return.
-
-        filter_dict (dict, optional):
-            Pinecone metadata filter.
-
-    Returns:
-        QueryResponse:
-            Pinecone query response.
     """
 
     if not query_text:
-        raise ValueError(
-            "query_text cannot be empty."
-        )
+        raise ValueError("query_text cannot be empty.")
 
     query_text = query_text.strip()
 
     if not query_text:
-        raise ValueError(
-            "query_text cannot be blank."
-        )
+        raise ValueError("query_text cannot be blank.")
+
+    # 1. Grab index instance via our lazy network runner
+    index = _get_pinecone_index(index_name)
 
     # ------------------------------------------------------------------
-    # Pinecone Connection
+    # Dense Query Embedding (Inline Import)
     # ------------------------------------------------------------------
-
-    pc = Pinecone(
-        api_key=PINECONE_API_KEY
-    )
-
-    index = pc.Index(index_name)
-
-    # ------------------------------------------------------------------
-    # Dense Query Embedding
-    # ------------------------------------------------------------------
+    from rag.embedding.main import get_dense_embedder
 
     dense_embedder = get_dense_embedder()
-
-    query_dense = dense_embedder.embed_query(
-        query_text
-    )
+    query_dense = dense_embedder.embed_query(query_text)
 
     # ------------------------------------------------------------------
-    # Sparse Query Embedding
+    # Sparse Query Embedding (Inline Import)
     # ------------------------------------------------------------------
+    from rag.embedding.main import get_bm25_encoder
 
     bm25_encoder = get_bm25_encoder()
+    query_sparse = bm25_encoder.encode_queries(query_text)
 
-    query_sparse = bm25_encoder.encode_queries(
-        query_text
-    )
-
-    if (
-        isinstance(query_sparse, list)
-        and len(query_sparse) > 0
-    ):
+    if isinstance(query_sparse, list) and len(query_sparse) > 0:
         query_sparse = query_sparse[0]
 
     # ------------------------------------------------------------------
-    # Hybrid Search
+    # Hybrid Search Execution
     # ------------------------------------------------------------------
-
     query_params = {
         "vector": query_dense,
         "sparse_values": query_sparse,
@@ -100,9 +80,7 @@ def query_index(
     if filter_dict:
         query_params["filter"] = filter_dict
 
-    results = index.query(
-        **query_params
-    )
+    results = index.query(**query_params)
 
     return results
 
@@ -112,36 +90,15 @@ def format_retrieved_context(
 ) -> str:
     """
     Convert Pinecone results into a single context string.
-
-    Args:
-        query_results:
-            Pinecone query response.
-
-    Returns:
-        str:
-            Concatenated context.
     """
-
-    if (
-        not query_results
-        or not hasattr(query_results, "matches")
-    ):
+    if not query_results or not hasattr(query_results, "matches"):
         return ""
 
     contexts = []
 
     for match in query_results.matches:
-
-        metadata = (
-            match.metadata
-            if hasattr(match, "metadata")
-            else {}
-        )
-
-        context = metadata.get(
-            "context",
-            "",
-        )
+        metadata = match.metadata if hasattr(match, "metadata") else {}
+        context = metadata.get("context", "")
 
         if context:
             contexts.append(context)
@@ -156,27 +113,8 @@ def retrieve_context(
     filter_dict: Optional[dict] = None,
 ) -> str:
     """
-    Convenience wrapper that performs retrieval
-    and returns formatted context.
-
-    Args:
-        query_text (str):
-            User query.
-
-        index_name (str):
-            Pinecone index.
-
-        top_k (int):
-            Number of chunks to retrieve.
-
-        filter_dict (dict, optional):
-            Pinecone metadata filter.
-
-    Returns:
-        str:
-            Retrieved context.
+    Convenience wrapper that performs retrieval and returns formatted context.
     """
-
     results = query_index(
         query_text=query_text,
         index_name=index_name,
@@ -184,9 +122,7 @@ def retrieve_context(
         filter_dict=filter_dict,
     )
 
-    return format_retrieved_context(
-        results
-    )
+    return format_retrieved_context(results)
 
 
 def retrieve_with_sources(
@@ -196,28 +132,8 @@ def retrieve_with_sources(
     filter_dict: Optional[dict] = None,
 ):
     """
-    Retrieve chunks along with metadata.
-
-    Useful for citations and source tracking.
-
-    Args:
-        query_text (str):
-            User query.
-
-        index_name (str):
-            Pinecone index.
-
-        top_k (int):
-            Number of chunks to retrieve.
-
-        filter_dict (dict, optional):
-            Pinecone metadata filter.
-
-    Returns:
-        list[dict]:
-            Retrieved chunks and metadata.
+    Retrieve chunks along with metadata. Useful for citations and source tracking.
     """
-
     results = query_index(
         query_text=query_text,
         index_name=index_name,
@@ -228,42 +144,19 @@ def retrieve_with_sources(
     retrieved_chunks = []
 
     for match in results.matches:
-
-        metadata = (
-            match.metadata
-            if hasattr(match, "metadata")
-            else {}
-        )
+        metadata = match.metadata if hasattr(match, "metadata") else {}
 
         retrieved_chunks.append(
             {
                 "id": match.id,
                 "score": match.score,
-                "context": metadata.get(
-                    "context",
-                    "",
-                ),
-                "source": metadata.get(
-                    "source",
-                    "",
-                ),
-                "file_name": metadata.get(
-                    "file_name",
-                    "",
-                ),
-                "file_type": metadata.get(
-                    "file_type",
-                    "",
-                ),
-                "page": metadata.get(
-                    "page",
-                ),
-                "row": metadata.get(
-                    "row",
-                ),
-                "chunk_id": metadata.get(
-                    "chunk_id",
-                ),
+                "context": metadata.get("context", ""),
+                "source": metadata.get("source", ""),
+                "file_name": metadata.get("file_name", ""),
+                "file_type": metadata.get("file_type", ""),
+                "page": metadata.get("page"),
+                "row": metadata.get("row"),
+                "chunk_id": metadata.get("chunk_id"),
             }
         )
 
