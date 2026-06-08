@@ -6,6 +6,8 @@ from rag.text_chunking.main import text_chunking
 from rag.vector_store.main import generate_and_store_embeddings
 from rag.detect_file_type.main import detect_file_type
 from rag.hybrid_search.main import query_index, format_retrieved_context, retrieve_with_sources
+from langchain_core.documents import Document
+
 INDEX_NAME = "multi-agent-corporate-index"
 
 def ingest_document(
@@ -71,7 +73,7 @@ def ingest_document(
 
 def retrieve_documents(
     query_text: str,
-    top_k: int = 10,
+    top_k: int = 20,
     filter_dict: dict | None = None,
 ):
     """
@@ -101,11 +103,12 @@ def retrieve_documents(
 
 def retrieve_context(
     query_text: str,
-    top_k: int = 10,
+    top_k: int = 20,
+    top_n: int = 5,
     filter_dict: dict | None = None,
 ) -> str:
     """
-    Retrieve and format context for LLM prompting.
+    Retrieve, rerank, and format context for LLM prompting.
 
     Args:
         query_text (str):
@@ -114,6 +117,9 @@ def retrieve_context(
         top_k (int):
             Number of chunks.
 
+        top_n (int):
+            Number of top-ranked chunks to return.
+
         filter_dict (dict | None):
             Optional metadata filter.
 
@@ -121,24 +127,44 @@ def retrieve_context(
         str
     """
 
-    results = retrieve_documents(
+    initial_results = retrieve_documents(
         query_text=query_text,
         top_k=top_k,
         filter_dict=filter_dict,
     )
 
+    if not initial_results:
+        return ""
+
+    langchain_docs = []
+    for match in initial_results.matches:
+        doc = Document(
+            page_content=match.metadata.get("context", ""),
+            metadata={
+                "source": match.metadata.get("source", ""),
+                "score": match.score,
+            },
+        )
+        langchain_docs.append(doc)
+
+    from rag.rerank_model.main import load_reranker
+    reranker = load_reranker()
+
+    reranked_docs = reranker.compress_documents(documents=langchain_docs, query=query_text)
+
     return format_retrieved_context(
-        results
+        reranked_docs[:top_n]
     )
 
 
 def retrieve_context_with_sources(
     query_text: str,
-    top_k: int = 10,
+    top_k: int = 20,
+    top_n: int = 5,
     filter_dict: dict | None = None,
 ):
     """
-    Retrieve context along with source metadata.
+    Retrieve, rerank, and format context along with source metadata.
 
     Args:
         query_text (str):
@@ -154,12 +180,48 @@ def retrieve_context_with_sources(
         list[dict]
     """
 
-    return retrieve_with_sources(
+    raw_response = retrieve_with_sources(
         query_text=query_text,
         index_name=INDEX_NAME,
         top_k=top_k,
         filter_dict=filter_dict,
     )
+
+    matches = raw_response.get("matches", []) if isinstance(raw_response, dict) else raw_response.matches
+
+    if not matches:
+        return []
+
+    langchain_docs = []
+    for idx, match in enumerate(matches):
+        metadata = match.get("metadata", {})
+        text_content = metadata.get("context", "")
+
+        # Track the entry index inside temporary metadata to re-sort original blocks seamlessly
+        metadata["__temp_idx"] = idx
+
+        langchain_docs.append(
+            Document(page_content=text_content, metadata=metadata)
+        )
+    from rag.rerank_model.main import load_reranker
+    reranker = load_reranker()
+
+    reranked_docs = reranker.compress_documents(documents=langchain_docs, query=query_text)
+    final_docs = reranked_docs[:top_n]
+
+    # Map back items into your native dictionary layout based on new score priorities
+    sorted_results = []
+    for doc in final_docs:
+        original_position = doc.metadata["__temp_idx"]
+        matched_item = matches[original_position]
+
+        # Update matching item score with the new Cohere relevance score
+        if "relevance_score" in doc.metadata:
+            matched_item["score"] = doc.metadata["relevance_score"]
+
+        sorted_results.append(matched_item)
+
+    return sorted_results
 
 
 def rag_pipeline(
