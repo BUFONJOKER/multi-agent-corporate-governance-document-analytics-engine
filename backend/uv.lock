@@ -249,7 +249,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "cloudmersive-virus-api-client" },
     { name = "fastapi" },
-    { name = "firecrawl" },
     { name = "ipykernel" },
     { name = "langchain" },
     { name = "langchain-classic" },
@@ -259,7 +258,6 @@ dependencies = [
     { name = "langchain-pinecone" },
     { name = "langchain-text-splitters" },
     { name = "langgraph" },
-    { name = "langsmith" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "streamlit" },
@@ -271,7 +269,6 @@ dependencies = [
 requires-dist = [
     { name = "cloudmersive-virus-api-client", specifier = ">=3.2.0" },
     { name = "fastapi", specifier = ">=0.136.3" },
-    { name = "firecrawl", specifier = ">=4.28.2" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "langchain", specifier = ">=1.3.2" },
     { name = "langchain-classic", specifier = ">=1.0.7" },
@@ -281,7 +278,6 @@ requires-dist = [
     { name = "langchain-pinecone", specifier = ">=0.2.13" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
     { name = "langgraph", specifier = ">=1.2.2" },
-    { name = "langsmith", specifier = ">=0.8.8" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "python-multipart", specifier = ">=0.0.30" },
     { name = "streamlit", specifier = ">=1.58.0" },
@@ -583,24 +579,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/82/45359b62a067409bd929ae8a56b8ed13e5a8c8a61194b3c236920999ab83/fastapi-0.136.3-py3-none-any.whl", hash = "sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620", size = 117481, upload-time = "2026-05-23T18:53:16.924Z" },
-]
-
-[[package]]
-name = "firecrawl"
-version = "4.28.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "httpx" },
-    { name = "nest-asyncio" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/be/fead16e9584d6e9de74b42ad75d446fee2a7be6ec1bc0625c42427ad581d/firecrawl-4.28.2.tar.gz", hash = "sha256:747449863629ac39ff2d890764107d19738b33c09555e789bd2a160a5243ab25", size = 191844, upload-time = "2026-05-28T00:03:53.543Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/09/9c82ac924eece839f8c2bca44827282ed4ff832ee2ac6db8cd525912cb2d/firecrawl-4.28.2-py3-none-any.whl", hash = "sha256:1b861809a0dc240cc70fbffe509c9263e6878f21da13f1a329b8f781c65fb2a4", size = 239132, upload-time = "2026-05-28T00:03:51.899Z" },
 ]
 
 [[package]]
