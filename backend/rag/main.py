@@ -164,7 +164,6 @@ def retrieve_context_with_sources(
 
 def rag_pipeline(
     file_path: Union[str, List[str]],
-    file_type: str,
     query_text: str,
 ):
     """
@@ -189,10 +188,7 @@ def rag_pipeline(
         QueryResponse
     """
 
-    ingestion_result = ingest_document(
-        file_path=file_path,
-        file_type=file_type,
-    )
+    ingestion_result = ingest_document(file_path=file_path)
 
     results = query_index(
         query_text=query_text,

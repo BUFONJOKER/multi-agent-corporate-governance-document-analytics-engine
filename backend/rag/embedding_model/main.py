@@ -17,7 +17,6 @@ def load_model():
 
         load_dotenv()
 
-        print("[*] Instantiating OpenAIEmbeddings client for the first time...")
         _cached_embeddings = OpenAIEmbeddings(
             model="text-embedding-3-small",
             dimensions=1024,
