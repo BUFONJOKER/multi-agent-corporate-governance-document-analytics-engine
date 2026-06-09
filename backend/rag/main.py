@@ -259,37 +259,8 @@ def rag_pipeline(
 
     ingestion_result = ingest_document(file_path=file_path)
 
-    results = query_index(
-        query_text=query_text,
-        index_name=ingestion_result["index_name"],
-    )
+    final_context = retrieve_context(query_text=query_text)
 
-    return results
+    return final_context
 
 
-if __name__ == "__main__":
-    file_path = [r"D:\Downloads\2-Lecture notes disorders of lipids metabolism 06-01-26.pdf", r"D:\Downloads\C4ProcedureForSerumAndPlasmaSepartion.pdf"]
-
-    query_text = "What are the procedures for serum and plasma separation?"
-
-    ingestion_result = ingest_document(file_path=file_path)
-
-    retrieved_docs = retrieve_documents(
-        query_text=query_text)
-
-    print("Retrieved Documents:")
-    print(retrieved_docs)
-    print("----------------------")
-
-    retrieved_context = retrieve_context(
-        query_text=query_text)
-
-    print("Retrieved Context:")
-    print(retrieved_context)
-
-    print("----------------------")
-
-    retrieved_with_sources = retrieve_context_with_sources(
-        query_text=query_text)
-    print("Retrieved Context with Sources:")
-    print(retrieved_with_sources)
