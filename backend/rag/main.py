@@ -5,7 +5,7 @@ from rag.file_parsers.main import parse_file
 from rag.text_chunking.main import text_chunking
 from rag.vector_store.main import generate_and_store_embeddings
 from rag.detect_file_type.main import detect_file_type
-from rag.hybrid_search.main import query_index, format_retrieved_context, retrieve_with_sources
+from rag.hybrid_search.main import query_index,retrieve_with_sources
 from langchain_core.documents import Document
 
 INDEX_NAME = "multi-agent-corporate-index"
@@ -133,7 +133,7 @@ def retrieve_context(
         filter_dict=filter_dict,
     )
 
-    if not initial_results:
+    if not initial_results or not hasattr(initial_results, "matches") or not initial_results.matches:
         return ""
 
     langchain_docs = []
@@ -152,9 +152,12 @@ def retrieve_context(
 
     reranked_docs = reranker.compress_documents(documents=langchain_docs, query=query_text)
 
-    return format_retrieved_context(
-        reranked_docs[:top_n]
-    )
+    final_docs = reranked_docs[:top_n]
+
+    # FIX: Extract the text from the LangChain Document objects directly
+    contexts = [doc.page_content for doc in final_docs if doc.page_content]
+
+    return "\n\n".join(contexts)
 
 
 def retrieve_context_with_sources(
@@ -187,22 +190,24 @@ def retrieve_context_with_sources(
         filter_dict=filter_dict,
     )
 
-    matches = raw_response.get("matches", []) if isinstance(raw_response, dict) else raw_response.matches
-
-    if not matches:
+    if not raw_response:
         return []
 
     langchain_docs = []
-    for idx, match in enumerate(matches):
-        metadata = match.get("metadata", {})
-        text_content = metadata.get("context", "")
+    for idx, match in enumerate(raw_response):
+        # FIX: Your helper already extracted 'context' out of metadata into the root dict
+        text_content = match.get("context", "")
 
-        # Track the entry index inside temporary metadata to re-sort original blocks seamlessly
-        metadata["__temp_idx"] = idx
+        # Track the entry index inside temporary metadata
+        metadata = {
+            "__temp_idx": idx,
+            "source": match.get("source", "")
+        }
 
         langchain_docs.append(
             Document(page_content=text_content, metadata=metadata)
         )
+
     from rag.rerank_model.main import load_reranker
     reranker = load_reranker()
 
@@ -213,11 +218,13 @@ def retrieve_context_with_sources(
     sorted_results = []
     for doc in final_docs:
         original_position = doc.metadata["__temp_idx"]
-        matched_item = matches[original_position]
+        matched_item = raw_response[original_position]
 
-        # Update matching item score with the new Cohere relevance score
+        # Update matching item score with the new Cohere relevance score if available
         if "relevance_score" in doc.metadata:
             matched_item["score"] = doc.metadata["relevance_score"]
+        elif hasattr(doc, "relevance_score") and doc.relevance_score is not None:
+            matched_item["score"] = doc.relevance_score
 
         sorted_results.append(matched_item)
 
@@ -258,3 +265,31 @@ def rag_pipeline(
     )
 
     return results
+
+
+if __name__ == "__main__":
+    file_path = [r"D:\Downloads\2-Lecture notes disorders of lipids metabolism 06-01-26.pdf", r"D:\Downloads\C4ProcedureForSerumAndPlasmaSepartion.pdf"]
+
+    query_text = "What are the procedures for serum and plasma separation?"
+
+    ingestion_result = ingest_document(file_path=file_path)
+
+    retrieved_docs = retrieve_documents(
+        query_text=query_text)
+
+    print("Retrieved Documents:")
+    print(retrieved_docs)
+    print("----------------------")
+
+    retrieved_context = retrieve_context(
+        query_text=query_text)
+
+    print("Retrieved Context:")
+    print(retrieved_context)
+
+    print("----------------------")
+
+    retrieved_with_sources = retrieve_context_with_sources(
+        query_text=query_text)
+    print("Retrieved Context with Sources:")
+    print(retrieved_with_sources)

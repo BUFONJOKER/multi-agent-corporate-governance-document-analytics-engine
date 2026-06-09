@@ -16,8 +16,8 @@ def load_reranker():
 
         load_dotenv()
 
-        reranker = CohereRerank(model="rerank-4-fast")
+        reranker = CohereRerank(model="rerank-v4.0-fast")
 
         _cached_reranker = reranker
-        
+
     return _cached_reranker

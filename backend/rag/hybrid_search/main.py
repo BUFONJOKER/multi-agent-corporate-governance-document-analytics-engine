@@ -85,44 +85,7 @@ def query_index(
     return results
 
 
-def format_retrieved_context(
-    query_results,
-) -> str:
-    """
-    Convert Pinecone results into a single context string.
-    """
-    if not query_results or not hasattr(query_results, "matches"):
-        return ""
 
-    contexts = []
-
-    for match in query_results.matches:
-        metadata = match.metadata if hasattr(match, "metadata") else {}
-        context = metadata.get("context", "")
-
-        if context:
-            contexts.append(context)
-
-    return "\n\n".join(contexts)
-
-
-def retrieve_context(
-    query_text: str,
-    index_name: str,
-    top_k: int = 10,
-    filter_dict: Optional[dict] = None,
-) -> str:
-    """
-    Convenience wrapper that performs retrieval and returns formatted context.
-    """
-    results = query_index(
-        query_text=query_text,
-        index_name=index_name,
-        top_k=top_k,
-        filter_dict=filter_dict,
-    )
-
-    return format_retrieved_context(results)
 
 
 def retrieve_with_sources(
